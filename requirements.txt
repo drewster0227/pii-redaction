@@ -1,0 +1,6 @@
+torch>=2.2.0
+transformers>=4.44.0
+accelerate>=0.33.0
+gradio>=4.44.0
+pandas>=2.0.0
+pytest>=8.0.0
