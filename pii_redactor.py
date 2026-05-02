@@ -167,6 +167,12 @@ def redact_csv(
 ) -> tuple["pd.DataFrame", dict[str, Any]]:
     """Redact PII from all string columns in a CSV file.
 
+    Each row's string values are joined into a single sentence before being
+    passed to the model so that it has enough context to recognise PII (e.g. a
+    lone first name cell gives the model no signal, but "Mary. Miller. …" does).
+    Detected entity spans are then mapped back to individual cells using
+    character offsets before the cells are updated in place.
+
     Returns a tuple of the redacted DataFrame and a stats dict with keys
     ``columns_processed`` (list of column names) and ``total_entities`` (int).
     """
@@ -174,23 +180,53 @@ def redact_csv(
 
     df = pd.read_csv(filepath)
     total_entities = 0
-    columns_processed: list[str] = []
+    string_cols = [col for col in df.columns if df[col].dtype == object]
 
-    for col in df.columns:
-        if df[col].dtype != object:
+    _SEPARATOR = ". "
+
+    for idx, row in df.iterrows():
+        # Collect the string values present in this row and their column names.
+        col_order: list[str] = []
+        str_values: list[str] = []
+        for col in string_cols:
+            val = row[col]
+            if isinstance(val, str):
+                col_order.append(col)
+                str_values.append(val)
+
+        if not str_values:
             continue
-        columns_processed.append(col)
-        new_values: list[Any] = []
-        for val in df[col]:
-            if not isinstance(val, str):
-                new_values.append(val)
-                continue
-            redacted, entities = redact_text(val, threshold=threshold, model_name=model_name)
-            total_entities += len(entities)
-            new_values.append(redacted)
-        df[col] = new_values
 
-    return df, {"columns_processed": columns_processed, "total_entities": total_entities}
+        # Build the joined text and record where each cell starts and ends.
+        offsets: list[tuple[int, int]] = []
+        pos = 0
+        for val in str_values:
+            offsets.append((pos, pos + len(val)))
+            pos += len(val) + len(_SEPARATOR)
+        joined = _SEPARATOR.join(str_values)
+
+        # Run the model once on the full row text for proper context.
+        entities = detect_entities(joined, threshold=threshold, model_name=model_name)
+        total_entities += len(entities)
+
+        # Map each entity back to whichever cell it falls inside, adjusting
+        # the span offsets to be relative to the start of that cell.
+        for col, cell_val, (cell_start, cell_end) in zip(col_order, str_values, offsets):
+            cell_entities = [
+                EntitySpan(
+                    entity_group=e.entity_group,
+                    word=e.word,
+                    start=e.start - cell_start,
+                    end=e.end - cell_start,
+                    score=e.score,
+                )
+                for e in entities
+                if e.start >= cell_start and e.end <= cell_end
+            ]
+            if cell_entities:
+                df.at[idx, col] = redact_with_spans(cell_val, cell_entities)
+
+    return df, {"columns_processed": string_cols, "total_entities": total_entities}
 
 
 def entities_to_rows(entities: Iterable[EntitySpan]) -> list[dict[str, Any]]:
