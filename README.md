@@ -7,22 +7,23 @@ This is built as a practical starter project for learning how to run Hugging Fac
 ## What it does
 
 - Loads the `openai/privacy-filter` token-classification model
-- Detects likely PII spans in pasted text
-- Redacts sensitive spans with readable placeholders
+- Detects likely PII spans in pasted text or uploaded CSV files
+- Redacts sensitive spans with readable placeholders (e.g. `[REDACTED_PRIVATE_PERSON]`)
 - Shows detected entities in a review table
 - Lets you adjust the confidence threshold
+- Downloads the redacted CSV for further use
 - Runs locally through a Gradio web app
 
 ## Project structure
 
 ```text
 .
-├── app.py                  # Gradio web interface
-├── pii_redactor.py          # Model wrapper + redaction logic
-├── requirements.txt         # Python dependencies
-├── sample_text.txt          # Demo text for testing
+├── app.py                  # Gradio web interface (text + CSV tabs)
+├── pii_redactor.py         # Model wrapper + redaction logic
+├── requirements.txt        # Python dependencies
+├── sample_text.txt         # Demo text for testing
 ├── tests/
-│   └── test_redactor.py     # Unit tests for redaction logic
+│   └── test_redactor.py    # Unit tests for redaction logic
 └── README.md
 ```
 
@@ -81,6 +82,8 @@ The tests avoid downloading the Hugging Face model. They focus on the pure redac
 
 ## Example
 
+### Text tab
+
 Input:
 
 ```text
@@ -93,15 +96,17 @@ Possible output:
 My name is [REDACTED_PRIVATE_PERSON]. Email me at [REDACTED_PRIVATE_EMAIL] or call [REDACTED_PRIVATE_PHONE_NUMBER].
 ```
 
+### CSV tab
+
+Upload any `.csv` file. All string columns are scanned and redacted in place. A cleaned CSV is returned for download. Numeric and date columns are left untouched.
+
 ## Important note
 
 This app is a privacy helper, not a legal/compliance guarantee. Always review redacted output before using it in sensitive workflows.
 
 ## Next features
 
-- File upload support for `.txt` and `.csv`
 - Batch redaction for folders
-- Export redacted text
 - Export detected entities as CSV
 - Regex fallback for emails and phone numbers
 - Dockerfile

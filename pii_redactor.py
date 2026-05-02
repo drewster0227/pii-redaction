@@ -160,6 +160,39 @@ def redact_text(text: str, threshold: float = 0.5, model_name: str = DEFAULT_MOD
     return redact_with_spans(text, entities), entities
 
 
+def redact_csv(
+    filepath: str,
+    threshold: float = 0.5,
+    model_name: str = DEFAULT_MODEL_NAME,
+) -> tuple["pd.DataFrame", dict[str, Any]]:
+    """Redact PII from all string columns in a CSV file.
+
+    Returns a tuple of the redacted DataFrame and a stats dict with keys
+    ``columns_processed`` (list of column names) and ``total_entities`` (int).
+    """
+    import pandas as pd
+
+    df = pd.read_csv(filepath)
+    total_entities = 0
+    columns_processed: list[str] = []
+
+    for col in df.columns:
+        if df[col].dtype != object:
+            continue
+        columns_processed.append(col)
+        new_values: list[Any] = []
+        for val in df[col]:
+            if not isinstance(val, str):
+                new_values.append(val)
+                continue
+            redacted, entities = redact_text(val, threshold=threshold, model_name=model_name)
+            total_entities += len(entities)
+            new_values.append(redacted)
+        df[col] = new_values
+
+    return df, {"columns_processed": columns_processed, "total_entities": total_entities}
+
+
 def entities_to_rows(entities: Iterable[EntitySpan]) -> list[dict[str, Any]]:
     """Convert entity spans into rows for display in Gradio or pandas."""
     return [
